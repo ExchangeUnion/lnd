@@ -14,6 +14,12 @@
 
 [[projects]]
   branch = "master"
+  name = "github.com/ExchangeUnion/swap-resolver"
+  packages = ["swapresolver"]
+  revision = "2784e3b85db3383c35393da4d16498cba629e928"
+
+[[projects]]
+  branch = "master"
   name = "github.com/NebulousLabs/fastrand"
   packages = ["."]
   revision = "3cf7173006a0b7d2371fa1a220da7f9d48c7827c"
@@ -249,12 +255,6 @@
 
 [[projects]]
   branch = "master"
-  name = "github.com/offerm/swap-resolver"
-  packages = ["swapresolver"]
-  revision = "30b3dc725bf283301a6596a94713cf5ce2bc9d9c"
-
-[[projects]]
-  branch = "master"
   name = "github.com/rogpeppe/fastuuid"
   packages = ["."]
   revision = "6724a57986aff9bff1a1770e9347036def7c89f6"
@@ -401,6 +401,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "e0920000e2a067445f4594d31dccdde175262acee288dd674e81dc4ff311da80"
+  inputs-digest = "e362c4a22ffe4e4b09c4e149def850346d2bf1fba8eb72ed58624ff3f97f2942"
   solver-name = "gps-cdcl"
   solver-version = 1

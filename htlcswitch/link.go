@@ -2283,7 +2283,7 @@ func (l *channelLink) processRemoteAdds(fwdPkg *channeldb.FwdPkg,
 			if err != nil {
 				if isResolverActive() {
 					// fire async resolver and return. HTLC will be handled by the resolver
-					asyncResolve(pd, l, obfuscator)
+					asyncResolve(pd, l, obfuscator, heightNow)
 					continue
 				}
 

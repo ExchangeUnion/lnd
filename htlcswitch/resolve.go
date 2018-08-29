@@ -12,7 +12,7 @@ import (
 	"github.com/lightningnetwork/lnd/lnwire"
 	"github.com/go-errors/errors"
 
-	pb "github.com/offerm/swap-resolver/swapresolver"
+	pb "github.com/ExchangeUnion/swap-resolver/swapresolver"
 	"encoding/hex"
 )
 
@@ -91,7 +91,7 @@ func connectResolver() (*grpc.ClientConn, pb.SwapResolverClient, error){
 	return conn, pb.NewSwapResolverClient(conn), nil
 }
 
-func queryPreImage(pd *lnwallet.PaymentDescriptor) (*pb.ResolveResp, error){
+func queryPreImage(pd *lnwallet.PaymentDescriptor, heightNow uint32) (*pb.ResolveResponse, error){
 
 	conn, client, err := connectResolver()
 	if err != nil{
@@ -100,13 +100,16 @@ func queryPreImage(pd *lnwallet.PaymentDescriptor) (*pb.ResolveResp, error){
 
 	defer conn.Close()
 
-	log.Debugf("Getting pre-image for hash: %v %v",pd.RHash, hex.EncodeToString(pd.RHash[:]))
+	log.Debugf("Getting pre-image for hash: %v %v for amount %v",pd.RHash, hex.EncodeToString(pd.RHash[:]),int64(pd.Amount))
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	// TODO: add additional attributes needed by the resolver. Like the amount
 	// we got, CTLV, etc
-	resp, err := client.ResolveHash(ctx, &pb.ResolveReq{
+	resp, err := client.ResolveHash(ctx, &pb.ResolveRequest{
 		Hash: hex.EncodeToString(pd.RHash[:]),
+		Amount: int64(pd.Amount),
+		Timeout: pd.Timeout,
+		Heightnow: heightNow,
 	})
 	if err != nil {
 		log.Errorf("%v.ResolveHash(_) = _, %v: ", client, err)
@@ -124,14 +127,14 @@ func update(l *channelLink){
 	}
 }
 
-func asyncResolve(pd *lnwallet.PaymentDescriptor, l *channelLink, obfuscator ErrorEncrypter)  {
+func asyncResolve(pd *lnwallet.PaymentDescriptor, l *channelLink, obfuscator ErrorEncrypter, heightNow uint32)  {
 
 	go func (){
 
 		// at end we have to update the link with success or failure
 		defer  update(l)
 
-		resp, err := queryPreImage(pd)
+		resp, err := queryPreImage(pd, heightNow)
 
 		// if we got an error we fail the HTLC
 		// TODO: provide the specific error back to HTLC source
