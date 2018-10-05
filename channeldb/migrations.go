@@ -458,3 +458,103 @@ func paymentStatusesMigration(tx *bolt.Tx) error {
 
 	return nil
 }
+
+// migratePruneEdgeUpdateIndex is a database migration that attempts to resolve
+// some lingering bugs with regards to edge policies and their update index.
+// Stale entries within the edge update index were not being properly pruned due
+// to a miscalculation on the offset of an edge's policy last update. This
+// migration also fixes the case where the public keys within edge policies were
+// being serialized with an extra byte, causing an even greater error when
+// attempting to perform the offset calculation described earlier.
+func migratePruneEdgeUpdateIndex(tx *bolt.Tx) error {
+	// To begin the migration, we'll retrieve the update index bucket. If it
+	// does not exist, we have nothing left to do so we can simply exit.
+	edges := tx.Bucket(edgeBucket)
+	if edges == nil {
+		return nil
+	}
+	edgeUpdateIndex := edges.Bucket(edgeUpdateIndexBucket)
+	if edgeUpdateIndex == nil {
+		return nil
+	}
+
+	// Retrieve some buckets that will be needed later on. These should
+	// already exist given the assumption that the buckets above do as
+	// well.
+	edgeIndex, err := edges.CreateBucketIfNotExists(edgeIndexBucket)
+	if edgeIndex == nil {
+		return fmt.Errorf("unable to create/fetch edge index " +
+			"bucket")
+	}
+	nodes, err := tx.CreateBucketIfNotExists(nodeBucket)
+	if err != nil {
+		return fmt.Errorf("unable to make node bucket")
+	}
+
+	log.Info("Migrating database to properly prune edge update index")
+
+	// We'll need to properly prune all the outdated entries within the edge
+	// update index. To do so, we'll gather all of the existing policies
+	// within the graph to re-populate them later on.
+	var edgeKeys [][]byte
+	err = edges.ForEach(func(edgeKey, edgePolicyBytes []byte) error {
+		// All valid entries are indexed by a public key (33 bytes)
+		// followed by a channel ID (8 bytes), so we'll skip any entries
+		// with keys that do not match this.
+		if len(edgeKey) != 33+8 {
+			return nil
+		}
+
+		edgeKeys = append(edgeKeys, edgeKey)
+
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("unable to gather existing edge policies: %v",
+			err)
+	}
+
+	// With the existing edge policies gathered, we'll recreate the index
+	// and populate it with the correct entries.
+	//
+	// NOTE: In bolt DB, calling Delete() on an iterator will actually move
+	// it to the NEXT item. As a result, we call First() here again to go
+	// back to the front after the item has been deleted.
+	updateCursor := edgeUpdateIndex.Cursor()
+	for k, _ := updateCursor.First(); k != nil; k, _ = updateCursor.First() {
+		if err := updateCursor.Delete(); err != nil {
+			return err
+		}
+	}
+
+	// For each edge key, we'll retrieve the policy, deserialize it, and
+	// re-add it to the different buckets. By doing so, we'll ensure that
+	// all existing edge policies are serialized correctly within their
+	// respective buckets and that the correct entries are populated within
+	// the edge update index.
+	for _, edgeKey := range edgeKeys {
+		edgePolicyBytes := edges.Get(edgeKey)
+
+		// Skip any entries with unknown policies as there will not be
+		// any entries for them in the edge update index.
+		if bytes.Equal(edgePolicyBytes[:], unknownPolicy) {
+			continue
+		}
+
+		edgePolicy, err := deserializeChanEdgePolicy(
+			bytes.NewReader(edgePolicyBytes), nodes,
+		)
+		if err != nil {
+			return err
+		}
+
+		err = updateEdgePolicy(edges, edgeIndex, nodes, edgePolicy)
+		if err != nil {
+			return err
+		}
+	}
+
+	log.Info("Migration to properly prune edge update index complete!")
+
+	return nil
+}
