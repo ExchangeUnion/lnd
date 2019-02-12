@@ -7,6 +7,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"github.com/lightningnetwork/lnd/htlcswitch"
 	"io/ioutil"
 	"net"
 	"os"
@@ -59,6 +60,11 @@ const (
 	defaultTorControlPort          = 9051
 	defaultTorV2PrivateKeyFilename = "v2_onion_private_key"
 	defaultTorV3PrivateKeyFilename = "v3_onion_private_key"
+
+	defaultHashResolverActive  = false
+	defaultHashResolverServerAddress  = "127.0.0.1:8886"
+	defaultHashResolverTLS            = false
+	defaultHashResolverCaFile         = "tls.cert"
 
 	defaultBroadcastDelta = 10
 
@@ -222,6 +228,8 @@ type config struct {
 
 	Hodl *hodl.Config `group:"hodl" namespace:"hodl"`
 
+	HashResolver *htlcswitch.HashResolverConfig `group:"resolver" namespace:"resolver"`
+
 	NoNetBootstrap bool `long:"nobootstrap" description:"If true, then automatic network bootstrapping will not be attempted."`
 
 	NoSeedBackup bool `long:"noseedbackup" description:"If true, NO SEED WILL BE EXPOSED AND THE WALLET WILL BE ENCRYPTED USING THE DEFAULT PASSPHRASE -- EVER. THIS FLAG IS ONLY FOR TESTING AND IS BEING DEPRECATED."`
@@ -310,6 +318,12 @@ func loadConfig() (*config, error) {
 			Control: defaultTorControl,
 		},
 		net: &tor.ClearNet{},
+		HashResolver: &htlcswitch.HashResolverConfig{
+			Active: defaultHashResolverActive,
+			ServerAddr: defaultHashResolverServerAddress,
+			TLS: defaultHashResolverTLS,
+			CaFile: defaultHashResolverCaFile,
+		},
 	}
 
 	// Pre-parse the command line options to pick up an alternative config

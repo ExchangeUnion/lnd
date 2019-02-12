@@ -575,7 +575,7 @@ func (p *peer) addLink(chanPoint *wire.OutPoint,
 		MaxFeeUpdateTimeout: htlcswitch.DefaultMaxLinkFeeUpdateTimeout,
 	}
 
-	link := htlcswitch.NewChannelLink(linkCfg, lnChan)
+	link := htlcswitch.NewChannelLink(linkCfg, lnChan, cfg.HashResolver)
 
 	// Before adding our new link, purge the switch of any pending or live
 	// links going by the same channel id. If one is found, we'll shut it

@@ -319,6 +319,10 @@ type channelLink struct {
 	// sub-systems with the latest set of active HTLC's on our channel.
 	htlcUpdates chan []channeldb.HTLC
 
+	// Cfg is the configuration struct that will be used to access
+	// the external hash resolver.
+	hashResolverCfg *HashResolverConfig
+
 	// resolver is a channel that we'll use to receive preimage
 	// resolution from the async hash resolver.
 	resolver chan resolutionData
@@ -344,12 +348,13 @@ type channelLink struct {
 // NewChannelLink creates a new instance of a ChannelLink given a configuration
 // and active channel that will be used to verify/apply updates to.
 func NewChannelLink(cfg ChannelLinkConfig,
-	channel *lnwallet.LightningChannel) ChannelLink {
+	channel *lnwallet.LightningChannel, hashResolverCfg *HashResolverConfig) ChannelLink {
 
 	return &channelLink{
-		cfg:         cfg,
-		channel:     channel,
-		shortChanID: channel.ShortChanID(),
+		cfg:             cfg,
+		hashResolverCfg: hashResolverCfg,
+		channel:         channel,
+		shortChanID:     channel.ShortChanID(),
 		// TODO(roasbeef): just do reserve here?
 		logCommitTimer: time.NewTimer(300 * time.Millisecond),
 		overflowQueue:  newPacketQueue(lnwallet.MaxHTLCNumber / 2),
@@ -2353,7 +2358,7 @@ func (l *channelLink) processRemoteAdds(fwdPkg *channeldb.FwdPkg,
 			// interest in trying to resolve the hash. We let the resolver
 			// know what should be the minCltvDelta for this HTLC
 			if err != nil {
-				invoice, minCltvDelta, err = lookupResolverInvoice(invoiceHash, fwdInfo.OutgoingCTLV-heightNow, err)
+				invoice, minCltvDelta, err = lookupResolverInvoice(l.hashResolverCfg, fwdInfo.OutgoingCTLV-heightNow, err)
 			}
 
 			if err != nil {
@@ -2488,7 +2493,7 @@ func (l *channelLink) processRemoteAdds(fwdPkg *channeldb.FwdPkg,
 			// async resolver to get the preimage
 			if invoice.AddIndex == 0 {
 				// fire async resolver and return. HTLC will be handled by the resolver
-				asyncResolve(pd, l, obfuscator, heightNow)
+				asyncResolve(l.hashResolverCfg, pd, l, obfuscator, heightNow)
 				continue
 			}
 
