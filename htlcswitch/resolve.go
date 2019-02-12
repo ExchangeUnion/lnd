@@ -2,48 +2,35 @@ package htlcswitch
 
 import (
 	"github.com/go-errors/errors"
-	"github.com/jessevdk/go-flags"
 	"github.com/lightningnetwork/lnd/lnwallet"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
-	"os"
-	"path/filepath"
 	"time"
 
 	"encoding/hex"
-	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/lightningnetwork/lnd/channeldb"
 	pb "github.com/lightningnetwork/lnd/lnrpc"
 	"google.golang.org/grpc/credentials"
 )
 
-const (
-	defaultConfigFilename = "resolve.conf"
-	defaultCaFile         = "tls.cert"
-	defaultServerAddress  = "127.0.0.1:8886"
-	defaultTLS            = false
-)
-
-type config struct {
-	TLS                bool   `long:"TLS" description:"If TLS should be used or not"`
-	CaFile             string `long:"cafile" description:"The file containning the CA root cert file"`
-	ServerAddr         string `long:"serveraddr" description:"host and port of the resolver"`
-	ServerHostOverride string
+type HashResolverConfig struct {
+	Active     bool   `long:"active" description:"whether the hash resolver is active"`
+	ServerAddr string `long:"serveraddr" description:"host and port of the resolver"`
+	TLS        bool   `long:"TLS" description:"If TLS should be used or not"`
+	CaFile     string `long:"cafile" description:"The file containning the CA root cert file"`
 }
 
-var (
-	cfg = &config{
-		TLS:                defaultTLS,
-		CaFile:             defaultCaFile,
-		ServerAddr:         defaultServerAddress,
-		ServerHostOverride: "",
-	}
-	caFile string
-)
+type resolutionData struct {
+	pd            *lnwallet.PaymentDescriptor
+	l             *channelLink
+	obfuscator    ErrorEncrypter
+	preimageArray [32]byte
+	failed        bool
+}
 
-func lookupResolverInvoice(rHash chainhash.Hash, cltvDelta uint32, err error) (channeldb.Invoice, uint32, error) {
+func lookupResolverInvoice(cfg *HashResolverConfig, cltvDelta uint32, err error) (channeldb.Invoice, uint32, error) {
 	invoice := channeldb.Invoice{}
-	if !isResolverActive() {
+	if !cfg.Active {
 		log.Info("resolver is not active. Providing no invoice")
 		return invoice, 0, err
 	}
@@ -53,48 +40,16 @@ func lookupResolverInvoice(rHash chainhash.Hash, cltvDelta uint32, err error) (c
 	}
 	log.Infof("resolver is active. Providing an invoice so HTLC will be accepted."+
 		"TimeLockDelta = %v", cltvDelta)
+
 	return invoice, cltvDelta, nil
-
 }
 
-func isResolverActive() bool {
-	// first see if we have a configuration file at the working directory. If
-	// we miss that, the resolver is not active
-
-	// TODO: config options should eventually become part of LND's config file and
-	// command line options. Once this is done we will replace the code below with
-	// as simple check of resolver.active
-	dir, err := os.Getwd()
-	if err != nil {
-		log.Errorf(err.Error())
-		return false
-	}
-
-	defaultConfigFile := filepath.Join(dir, "..", defaultConfigFilename)
-
-	// now, try to read the configration. If not valid, the resolver is not
-	// active
-	log.Debugf("reading configuration from %v", defaultConfigFile)
-
-	err = flags.IniParse(defaultConfigFile, cfg)
-
-	if err != nil {
-		log.Errorf("failed to read resolver configuration file (%v) - %v", defaultConfigFile, err)
-		return false
-	}
-
-	caFile = filepath.Join(dir, "..", cfg.CaFile)
-
-	// if all is well - resolver is active
-	return true
-}
-
-func connectResolver() (*grpc.ClientConn, pb.HashResolverClient, error) {
+func connectResolver(cfg *HashResolverConfig) (*grpc.ClientConn, pb.HashResolverClient, error) {
 	var opts []grpc.DialOption
 	if cfg.TLS {
-		creds, err := credentials.NewClientTLSFromFile(caFile, "")
+		creds, err := credentials.NewClientTLSFromFile(cfg.CaFile, "")
 		if err != nil {
-			err = errors.New("Failed to create TLS credentials from " + caFile + " " + err.Error())
+			err = errors.New("Failed to create TLS credentials from " + cfg.CaFile + " " + err.Error())
 			log.Error(err)
 			return nil, nil, err
 		}
@@ -111,9 +66,8 @@ func connectResolver() (*grpc.ClientConn, pb.HashResolverClient, error) {
 	return conn, pb.NewHashResolverClient(conn), nil
 }
 
-func queryPreImage(pd *lnwallet.PaymentDescriptor, heightNow uint32) (*pb.ResolveResponse, error) {
-
-	conn, client, err := connectResolver()
+func queryPreImage(cfg *HashResolverConfig, pd *lnwallet.PaymentDescriptor, heightNow uint32) (*pb.ResolveResponse, error) {
+	conn, client, err := connectResolver(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -137,18 +91,8 @@ func queryPreImage(pd *lnwallet.PaymentDescriptor, heightNow uint32) (*pb.Resolv
 	return resp, nil
 }
 
-type resolutionData struct {
-	pd            *lnwallet.PaymentDescriptor
-	l             *channelLink
-	obfuscator    ErrorEncrypter
-	preimageArray [32]byte
-	failed        bool
-}
-
-func asyncResolve(pd *lnwallet.PaymentDescriptor, l *channelLink, obfuscator ErrorEncrypter, heightNow uint32) {
-
+func asyncResolve(cfg *HashResolverConfig, pd *lnwallet.PaymentDescriptor, l *channelLink, obfuscator ErrorEncrypter, heightNow uint32) {
 	go func() {
-
 		// prepare message to main routine
 		resolution := resolutionData{
 			pd:         pd,
@@ -156,7 +100,7 @@ func asyncResolve(pd *lnwallet.PaymentDescriptor, l *channelLink, obfuscator Err
 			obfuscator: obfuscator,
 		}
 
-		resp, err := queryPreImage(pd, heightNow)
+		resp, err := queryPreImage(cfg, pd, heightNow)
 
 		if err != nil {
 			log.Errorf("Error from queryPreImage: %v", err)
@@ -180,5 +124,4 @@ func asyncResolve(pd *lnwallet.PaymentDescriptor, l *channelLink, obfuscator Err
 		resolution.failed = false
 		l.resolver <- resolution
 	}()
-
 }

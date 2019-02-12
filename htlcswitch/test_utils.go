@@ -923,7 +923,7 @@ func newThreeHopNetwork(t testing.TB, aliceChannel, firstBobChannel,
 			MaxFeeUpdateTimeout: maxFeeUpdateTimeout,
 			OnChannelFailure:    func(lnwire.ChannelID, lnwire.ShortChannelID, LinkFailureError) {},
 		},
-		aliceChannel,
+		aliceChannel, new(HashResolverConfig),
 	)
 	if err := aliceServer.htlcSwitch.AddLink(aliceChannelLink); err != nil {
 		t.Fatalf("unable to add alice channel link: %v", err)
@@ -966,7 +966,7 @@ func newThreeHopNetwork(t testing.TB, aliceChannel, firstBobChannel,
 			MaxFeeUpdateTimeout: maxFeeUpdateTimeout,
 			OnChannelFailure:    func(lnwire.ChannelID, lnwire.ShortChannelID, LinkFailureError) {},
 		},
-		firstBobChannel,
+		firstBobChannel, new(HashResolverConfig),
 	)
 	if err := bobServer.htlcSwitch.AddLink(firstBobChannelLink); err != nil {
 		t.Fatalf("unable to add first bob channel link: %v", err)
@@ -1009,7 +1009,7 @@ func newThreeHopNetwork(t testing.TB, aliceChannel, firstBobChannel,
 			MaxFeeUpdateTimeout: maxFeeUpdateTimeout,
 			OnChannelFailure:    func(lnwire.ChannelID, lnwire.ShortChannelID, LinkFailureError) {},
 		},
-		secondBobChannel,
+		secondBobChannel, new(HashResolverConfig),
 	)
 	if err := bobServer.htlcSwitch.AddLink(secondBobChannelLink); err != nil {
 		t.Fatalf("unable to add second bob channel link: %v", err)
@@ -1052,7 +1052,7 @@ func newThreeHopNetwork(t testing.TB, aliceChannel, firstBobChannel,
 			MaxFeeUpdateTimeout: maxFeeUpdateTimeout,
 			OnChannelFailure:    func(lnwire.ChannelID, lnwire.ShortChannelID, LinkFailureError) {},
 		},
-		carolChannel,
+		carolChannel, new(HashResolverConfig),
 	)
 	if err := carolServer.htlcSwitch.AddLink(carolChannelLink); err != nil {
 		t.Fatalf("unable to add carol channel link: %v", err)
